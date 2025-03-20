@@ -33,7 +33,7 @@ const API_KEY = process.env.API_KEY
 
 // Base URLs for external APIs
 const CITY_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/cities'
-const WEATHER_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/weather'
+const WEATHER_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/weather-predictions'
 
 const fastify = Fastify({
   logger: true,
@@ -56,6 +56,7 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
   
   try {
     // Get city info from City API
+    console.log('Fetching city data...');
     const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}/insights?apiKey=${API_KEY}`)
     
     if (!cityResponse.ok) {
@@ -66,6 +67,7 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
     }
     
     const cityData = await cityResponse.json()
+    console.log('City data:', cityData);
     
     // Validate city data format
     if (!cityData.coordinates || typeof cityData.coordinates.latitude !== 'number' || 
@@ -82,19 +84,29 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
     }
     
     // Get weather predictions from Weather API
+    console.log('Fetching weather data...');
     const weatherResponse = await fetch(`${WEATHER_API_BASE_URL}?lat=${cityData.coordinates.latitude}&lon=${cityData.coordinates.longitude}&apiKey=${API_KEY}`)
     
     if (!weatherResponse.ok) {
       throw new Error(`Weather API error: ${weatherResponse.statusText}`)
     }
     
-    const weatherData = await weatherResponse.json()
+    const weatherDataArray = await weatherResponse.json()
+    console.log('Weather data array:', weatherDataArray);
     
-    // Validate weather data format
-    if (!weatherData.today || !weatherData.tomorrow ||
-        typeof weatherData.today.min !== 'number' || typeof weatherData.today.max !== 'number' ||
-        typeof weatherData.tomorrow.min !== 'number' || typeof weatherData.tomorrow.max !== 'number') {
-      throw new Error('Invalid weather data format from Weather API')
+    // Find weather for this city
+    const weatherData = weatherDataArray.find(cityWeather => cityWeather.cityId === cityId)
+    
+    if (!weatherData || !weatherData.predictions || weatherData.predictions.length < 2) {
+      throw new Error('Weather data not found for this city')
+    }
+    
+    // Find today and tomorrow predictions
+    const todayPrediction = weatherData.predictions.find(p => p.when === 'today')
+    const tomorrowPrediction = weatherData.predictions.find(p => p.when === 'tomorrow')
+    
+    if (!todayPrediction || !tomorrowPrediction) {
+      throw new Error('Missing predictions for today or tomorrow')
     }
     
     // Get recipes for this city and ensure proper format
@@ -114,13 +126,13 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
       weatherPredictions: [
         {
           when: 'today',
-          min: Number(weatherData.today.min),
-          max: Number(weatherData.today.max)
+          min: Number(todayPrediction.min),
+          max: Number(todayPrediction.max)
         },
         {
           when: 'tomorrow',
-          min: Number(weatherData.tomorrow.min),
-          max: Number(weatherData.tomorrow.max)
+          min: Number(tomorrowPrediction.min),
+          max: Number(tomorrowPrediction.max)
         }
       ],
       recipes
@@ -153,7 +165,7 @@ fastify.post('/cities/:cityId/recipes', async (request, reply) => {
   
   try {
     // Check if city exists
-    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}?apiKey=${API_KEY}`)
+    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}/insights?apiKey=${API_KEY}`)
     
     if (!cityResponse.ok) {
       if (cityResponse.status === 404) {
@@ -178,7 +190,7 @@ fastify.delete('/cities/:cityId/recipes/:recipeId', async (request, reply) => {
   
   try {
     // Check if city exists
-    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}?apiKey=${API_KEY}`)
+    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}/insights?apiKey=${API_KEY}`)
     
     if (!cityResponse.ok) {
       if (cityResponse.status === 404) {
