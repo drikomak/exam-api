@@ -32,7 +32,7 @@ const recipeStorage = {
 const API_KEY = process.env.API_KEY
 
 // Base URLs for external APIs
-const CITY_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/city'
+const CITY_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/cities'
 const WEATHER_API_BASE_URL = 'https://api-ugi2pflmha-ew.a.run.app/weather'
 
 const fastify = Fastify({
@@ -56,38 +56,72 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
   
   try {
     // Get city info from City API
-    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}?apiKey=${API_KEY}`)
+    const cityResponse = await fetch(`${CITY_API_BASE_URL}/${cityId}/insights?apiKey=${API_KEY}`)
     
     if (!cityResponse.ok) {
-      // If city doesn't exist, return error
       if (cityResponse.status === 404) {
         return reply.code(404).send({ error: 'City not found' })
       }
-      throw new Error(`City API error: ${cityResponse.status}`)
+      throw new Error(`City API error: ${cityResponse.statusText}`)
     }
     
     const cityData = await cityResponse.json()
+    
+    // Validate city data format
+    if (!Array.isArray(cityData.coordinates) || cityData.coordinates.length !== 2 ||
+        typeof cityData.coordinates[0] !== 'number' || typeof cityData.coordinates[1] !== 'number') {
+      throw new Error('Invalid coordinates format from City API')
+    }
+    
+    if (typeof cityData.population !== 'number' || !Number.isInteger(cityData.population)) {
+      throw new Error('Invalid population format from City API')
+    }
+    
+    if (!Array.isArray(cityData.knownFor)) {
+      throw new Error('Invalid knownFor format from City API')
+    }
     
     // Get weather predictions from Weather API
     const weatherResponse = await fetch(`${WEATHER_API_BASE_URL}?lat=${cityData.coordinates[0]}&lon=${cityData.coordinates[1]}&apiKey=${API_KEY}`)
     
     if (!weatherResponse.ok) {
-      throw new Error(`Weather API error: ${weatherResponse.status}`)
+      throw new Error(`Weather API error: ${weatherResponse.statusText}`)
     }
     
     const weatherData = await weatherResponse.json()
     
-    // Get recipes for this city
-    const recipes = recipeStorage.getByCityId(cityId).map(recipe => ({ id: recipe.id, content: recipe.content }))
+    // Validate weather data format
+    if (!weatherData.today || !weatherData.tomorrow ||
+        typeof weatherData.today.min !== 'number' || typeof weatherData.today.max !== 'number' ||
+        typeof weatherData.tomorrow.min !== 'number' || typeof weatherData.tomorrow.max !== 'number') {
+      throw new Error('Invalid weather data format from Weather API')
+    }
+    
+    // Get recipes for this city and ensure proper format
+    const recipes = recipeStorage.getByCityId(cityId).map(recipe => ({
+      id: parseInt(recipe.id),
+      content: String(recipe.content)
+    }))
     
     // Format response according to requirements
     const response = {
-      coordinates: cityData.coordinates,
-      population: cityData.population,
-      knownFor: cityData.knownFor,
+      coordinates: [
+        Number(cityData.coordinates[0]),
+        Number(cityData.coordinates[1])
+      ],
+      population: parseInt(cityData.population),
+      knownFor: cityData.knownFor.map(String),
       weatherPredictions: [
-        { when: 'today', min: weatherData.today.min, max: weatherData.today.max },
-        { when: 'tomorrow', min: weatherData.tomorrow.min, max: weatherData.tomorrow.max }
+        {
+          when: 'today',
+          min: Number(weatherData.today.min),
+          max: Number(weatherData.today.max)
+        },
+        {
+          when: 'tomorrow',
+          min: Number(weatherData.tomorrow.min),
+          max: Number(weatherData.tomorrow.max)
+        }
       ],
       recipes
     }
