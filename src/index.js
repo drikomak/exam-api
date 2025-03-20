@@ -68,8 +68,8 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
     const cityData = await cityResponse.json()
     
     // Validate city data format
-    if (!Array.isArray(cityData.coordinates) || cityData.coordinates.length !== 2 ||
-        typeof cityData.coordinates[0] !== 'number' || typeof cityData.coordinates[1] !== 'number') {
+    if (!cityData.coordinates || typeof cityData.coordinates.latitude !== 'number' || 
+        typeof cityData.coordinates.longitude !== 'number') {
       throw new Error('Invalid coordinates format from City API')
     }
     
@@ -82,7 +82,7 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
     }
     
     // Get weather predictions from Weather API
-    const weatherResponse = await fetch(`${WEATHER_API_BASE_URL}?lat=${cityData.coordinates[0]}&lon=${cityData.coordinates[1]}&apiKey=${API_KEY}`)
+    const weatherResponse = await fetch(`${WEATHER_API_BASE_URL}?lat=${cityData.coordinates.latitude}&lon=${cityData.coordinates.longitude}&apiKey=${API_KEY}`)
     
     if (!weatherResponse.ok) {
       throw new Error(`Weather API error: ${weatherResponse.statusText}`)
@@ -106,8 +106,8 @@ fastify.get('/cities/:cityId/infos', async (request, reply) => {
     // Format response according to requirements
     const response = {
       coordinates: [
-        Number(cityData.coordinates[0]),
-        Number(cityData.coordinates[1])
+        Number(cityData.coordinates.latitude),
+        Number(cityData.coordinates.longitude)
       ],
       population: parseInt(cityData.population),
       knownFor: cityData.knownFor.map(String),
